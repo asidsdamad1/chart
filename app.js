@@ -110,6 +110,36 @@ const btnCopyJson = document.getElementById('btn-copy-json');
 const btnPrint = document.getElementById('btn-print');
 const btnThemeToggle = document.getElementById('btn-theme-toggle');
 
+// Save all axis settings to localStorage
+function saveAxisSettings() {
+  const settings = {
+    autoScale: yAutoScale.checked,
+    min: yMinInput.value,
+    max: yMaxInput.value,
+    step: yStepInput.value,
+    suffix: ySuffixInput.value
+  };
+  localStorage.setItem('chart_axis_settings', JSON.stringify(settings));
+}
+
+// Restore axis settings from localStorage and sync disabled state
+function restoreAxisSettings() {
+  const saved = JSON.parse(localStorage.getItem('chart_axis_settings'));
+  if (!saved) return;
+
+  yAutoScale.checked = saved.autoScale !== false; // default true
+  if (saved.min !== undefined)    yMinInput.value  = saved.min;
+  if (saved.max !== undefined)    yMaxInput.value  = saved.max;
+  if (saved.step !== undefined)   yStepInput.value = saved.step;
+  if (saved.suffix !== undefined) ySuffixInput.value = saved.suffix;
+
+  // Sync disabled state with saved autoScale
+  const manual = !yAutoScale.checked;
+  yMinInput.disabled  = !manual;
+  yMaxInput.disabled  = !manual;
+  yStepInput.disabled = !manual;
+}
+
 // Initialize Dashboard
 document.addEventListener('DOMContentLoaded', () => {
   // Restore Theme preference
@@ -119,6 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateThemeUI();
   }
 
+  restoreAxisSettings();
   renderLinesManager();
   renderTable();
   updateDropdowns();
@@ -561,6 +592,7 @@ function updateChart() {
   // Save state to localStorage
   localStorage.setItem('chart_data_points', JSON.stringify(dataPoints));
   localStorage.setItem('chart_lines', JSON.stringify(chartLines));
+  saveAxisSettings();
   
   // Update labels
   chart.data.labels = dataPoints.map(p => p.label);
@@ -746,11 +778,24 @@ function setupEventListeners() {
   // Y-Axis Auto scale checkbox toggle
   yAutoScale.addEventListener('change', () => {
     const isManual = !yAutoScale.checked;
-    yMinInput.disabled = !isManual;
-    yMaxInput.disabled = !isManual;
+    yMinInput.disabled  = !isManual;
+    yMaxInput.disabled  = !isManual;
     yStepInput.disabled = !isManual;
     updateChart();
   });
+
+  // 'Sửa tất cả' button — unlocks all manual axis fields at once
+  const btnEditAllAxis = document.getElementById('btn-edit-all-axis');
+  if (btnEditAllAxis) {
+    btnEditAllAxis.addEventListener('click', () => {
+      yAutoScale.checked  = false;   // switch to manual mode
+      yMinInput.disabled  = false;
+      yMaxInput.disabled  = false;
+      yStepInput.disabled = false;
+      yMinInput.focus();             // put cursor straight into Y-Min
+      updateChart();
+    });
+  }
   
   // Y-Axis input fields changes
   [yMinInput, yMaxInput, yStepInput, ySuffixInput].forEach(elem => {
