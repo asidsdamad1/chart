@@ -147,48 +147,148 @@ main {
   margin: 0 auto;
 }
 
-/* Mobile Responsive Layout */
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — Tablet (≤ 1100px)
+   Biểu đồ hiển thị trên trước, Sidebar xuống dưới
+═══════════════════════════════════════════════════ */
 @media (max-width: 1100px) {
+  /* Body không còn locked 100vh — cho phép cuộn dọc */
+  body {
+    height: auto;
+    max-height: none;
+    overflow: auto;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 16px 20px;
+  }
+
+  header h1 {
+    font-size: 1.3rem;
+  }
+
   main {
     flex-direction: column;
-    overflow: auto;
+    overflow: visible;        /* không clip content */
     padding: 16px;
     gap: 16px;
+    min-height: auto;
   }
-  
-  /* Render Chart Content FIRST, Sidebar SECOND */
+
+  /* Chart area hiển thị TRƯỚC */
   .content-area {
     order: 1;
-    flex: none; /* Tránh tình trạng bị ép chiều cao về 0 do flex-basis: 0% */
+    flex: none;
     width: 100%;
+    height: auto;
+    min-height: auto;
+    overflow: visible;
   }
+
+  /* Sidebar xuống DƯỚI */
   .control-sidebar {
     order: 2;
-    height: auto;
-    overflow-y: visible;
     width: 100% !important;
+    min-width: unset;
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
+    overflow-x: hidden;
+    flex-shrink: unset;
   }
+
+  /* Ẩn resizer trên tablet/mobile */
   .sidebar-resizer {
     display: none !important;
   }
+
+  /* Chart card không cần flex:1 vì không có fixed-height parent */
+  .chart-card {
+    min-height: 420px;
+    flex: none;
+  }
+
+  /* Chart container cần chiều cao rõ ràng */
+  .chart-container {
+    height: 400px;
+    flex: none;
+  }
+
+  /* Utilities row */
+  .utilities-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
 }
 
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — Mobile (≤ 768px)
+═══════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-  .chart-container {
-    height: 350px !important;
+  header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
-  
+
+  header h1 {
+    font-size: 1.1rem;
+  }
+
+  .subtitle {
+    display: none;  /* Ẩn subtitle trên màn hình nhỏ */
+  }
+
+  main {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .chart-card {
+    min-height: 340px;
+    padding: 16px;
+  }
+
+  .chart-container {
+    height: 320px;
+  }
+
   .chart-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
   }
-  
+
+  .chart-legend {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   .utilities-row {
     flex-direction: column;
     align-items: stretch;
+    padding: 12px 16px;
+  }
+
+  .action-group {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .action-group .btn {
+    flex: 1;
+    min-width: 120px;
+    font-size: 0.8rem;
+    padding: 8px 10px;
+  }
+
+  /* Export title input full width trên mobile */
+  #export-title-input {
+    width: 100% !important;
   }
 }
+
 
 /* Sidebar Styling */
 .control-sidebar {

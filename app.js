@@ -1565,3 +1565,15 @@ function updateChartThemeForPrint(isPrinting) {
   chart.update('none'); // Update without animation
   updateLegendStylesUI();
 }
+
+// Resize chart khi cửa sổ thay đổi kích thước (quan trọng trên mobile/tablet)
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    if (chart) {
+      chart.resize();
+      chart.update('none');
+    }
+  }, 150);
+});
