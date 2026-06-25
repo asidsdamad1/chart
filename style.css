@@ -86,10 +86,11 @@ body {
     radial-gradient(at 50% 80%, rgba(236, 72, 153, 0.04) 0px, transparent 50%);
   color: var(--text-primary);
   font-family: var(--font-body);
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
   line-height: 1.5;
 }
 
@@ -135,19 +136,57 @@ header h1::before {
 
 /* Main Layout Grid */
 main {
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 24px;
+  display: flex;
+  gap: 12px;
   padding: 24px 40px;
   flex: 1;
+  min-height: 0;          /* allow flex children to shrink */
+  overflow: hidden;        /* contain children */
   max-width: 1800px;
   width: 100%;
   margin: 0 auto;
 }
 
+/* Mobile Responsive Layout */
 @media (max-width: 1100px) {
   main {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    overflow: auto;
+    padding: 16px;
+    gap: 16px;
+  }
+  
+  /* Render Chart Content FIRST, Sidebar SECOND */
+  .content-area {
+    order: 1;
+    flex: none; /* Tránh tình trạng bị ép chiều cao về 0 do flex-basis: 0% */
+    width: 100%;
+  }
+  .control-sidebar {
+    order: 2;
+    height: auto;
+    overflow-y: visible;
+    width: 100% !important;
+  }
+  .sidebar-resizer {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    height: 350px !important;
+  }
+  
+  .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .utilities-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
@@ -155,18 +194,58 @@ main {
 .control-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-height: calc(100vh - 130px);
+  gap: 16px;
+  height: 100%;            /* fill the full grid row height */
   overflow-y: auto;
-  padding-right: 4px;
+  overflow-x: hidden;
+  padding-right: 6px;
+  padding-bottom: 16px;
+  width: 380px;
+  min-width: 320px;
+  flex-shrink: 0;
 }
 
-@media (max-width: 1100px) {
-  .control-sidebar {
-    max-height: none;
-    overflow-y: visible;
-  }
+.content-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
+
+.sidebar-resizer {
+  width: 12px;
+  cursor: col-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.sidebar-resizer:hover, .sidebar-resizer.active {
+  background: rgba(255, 255, 255, 0.05);
+}
+body.light-theme .sidebar-resizer:hover, body.light-theme .sidebar-resizer.active {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.sidebar-resizer::after {
+  content: '';
+  width: 4px;
+  height: 48px;
+  background: var(--border-color);
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+
+.sidebar-resizer:hover::after, .sidebar-resizer.active::after {
+  background: var(--primary-color);
+}
+
+
 
 .glass-panel {
   background: var(--bg-glass);
@@ -264,11 +343,18 @@ select:focus {
 
 /* Dynamic Data Table */
 .table-container {
-  max-height: 250px;
+  min-height: 0; /* Cho phép giãn linh hoạt theo chiều cao trống */
   overflow-y: auto;
+  overflow-x: auto; /* Hỗ trợ cuộn ngang khi có nhiều cột */
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   margin-bottom: 12px;
+}
+
+/* Custom scrollbar for horizontal scrolling in table */
+.table-container::-webkit-scrollbar {
+  height: 8px; 
+  width: 6px;
 }
 
 table {
@@ -276,24 +362,42 @@ table {
   border-collapse: collapse;
   text-align: left;
   font-size: 0.85rem;
+  min-width: max-content; /* Cho phép bảng giãn ra vô hạn theo chiều ngang */
 }
 
 th, td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-color);
+  min-width: 80px; /* Đảm bảo cột không bị ép quá nhỏ */
 }
 
 th {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-primary); /* Cần background solid để che phần cuộn */
   color: var(--text-secondary);
   font-weight: 600;
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
-tr:hover {
+/* Cột đầu tiên (Thời gian) dính bên trái khi cuộn ngang */
+td:first-child, th:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+  z-index: 1; 
+}
+
+th:first-child {
+  z-index: 3; /* Góc trên cùng bên trái luôn nằm trên cùng */
+}
+
+tr:hover td:not(:first-child) {
   background: rgba(255, 255, 255, 0.02);
+}
+tr:hover td:first-child {
+  background: var(--bg-glass-active);
 }
 
 .table-input {
@@ -369,6 +473,9 @@ tr:hover {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: 100%;            /* fill the full grid row height */
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .chart-card {
@@ -625,8 +732,57 @@ body.light-theme .high-dashed-bg {
   }
 
   /* Force background graphics to print correctly in all browsers */
-  * {
+    * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-content {
+  background: var(--bg-primary);
+  max-width: 800px;
+  width: 90%;
+  animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Collapsible Panel Styles */
+.glass-panel.collapsed {
+  min-height: auto !important;
+  flex: none !important;
+}
+
+.glass-panel.collapsed > *:not(.panel-title) {
+  display: none !important;
+}
+
+.glass-panel.collapsed .panel-title {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.panel-title {
+  transition: opacity 0.2s;
+}
+
+.panel-title:hover {
+  opacity: 0.8;
 }

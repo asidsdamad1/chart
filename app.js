@@ -245,11 +245,11 @@ function renderTable() {
   // 1. Render Table Head
   if (dataTableHead) {
     let tr = document.createElement('tr');
-    tr.innerHTML = `<th style="width: 25%;">Thời gian</th>`;
+    tr.innerHTML = `<th style="min-width: 90px; max-width: 120px;">Thời gian</th>`;
     chartLines.forEach(line => {
       tr.innerHTML += `<th style="text-align: center; font-size: 0.82rem;">${line.name}</th>`;
     });
-    tr.innerHTML += `<th style="width: 10%; text-align: center;">Xóa</th>`;
+    tr.innerHTML += `<th style="min-width: 45px; text-align: center;">Xóa</th>`;
     dataTableHead.innerHTML = '';
     dataTableHead.appendChild(tr);
   }
@@ -375,6 +375,84 @@ const lineShadowPlugin = {
   }
 };
 
+// Plugin vẽ nhãn điểm cuối trục X luôn hiển thị, kể cả khi bị autoSkip bỏ qua
+const lastXTickPlugin = {
+  id: 'lastXTick',
+  afterDraw: (chartInstance) => {
+    const xScale = chartInstance.scales.x;
+    if (!xScale || xScale.type !== 'time') return;
+
+    const lastPoint = dataPoints[dataPoints.length - 1];
+    if (!lastPoint) return;
+    const lastDate = parseLabelToDate(lastPoint.label);
+    if (!lastDate) return;
+
+    // Tính toán vị trí pixel X của điểm dữ liệu cuối cùng
+    const xPixel = xScale.getPixelForValue(lastDate.valueOf());
+    const yPixel = xScale.bottom; // Đáy của trục X
+
+    // Kiểm tra xem tick cuối đã có label hiển thị tại vị trí này chưa
+    const THRESHOLD = 20; // px — nếu đã có tick trong vòng 20px thì không vẽ thêm
+    const alreadyVisible = xScale.ticks.some(tick => {
+      const tickPx = xScale.getPixelForValue(tick.value);
+      return Math.abs(tickPx - xPixel) < THRESHOLD;
+    });
+    if (alreadyVisible) return;
+
+    // Vẽ nhãn cuối bằng canvas 2D API
+    const { ctx } = chartInstance;
+    ctx.save();
+
+    const isLight = document.body.classList.contains('light-theme');
+    const labelColor = isLight ? '#475569' : '#94a3b8';
+
+    ctx.font = '11px Inter, sans-serif';
+    ctx.fillStyle = labelColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    // Padding nhỏ từ đáy axis
+    ctx.fillText(lastPoint.label, xPixel, yPixel + 4);
+
+    // Vẽ tick mark nhỏ
+    ctx.strokeStyle = labelColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xPixel, xScale.top);
+    ctx.lineTo(xPixel, yPixel);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+};
+
+// Parse label "MM/YYYY" → JS Date (ngày 01 của tháng đó)
+function parseLabelToDate(label) {
+  if (!label) return null;
+  const parts = label.split('/');
+  if (parts.length === 2) {
+    // MM/YYYY format
+    const month = parseInt(parts[0], 10) - 1; // 0-indexed
+    const year  = parseInt(parts[1], 10);
+    if (!isNaN(month) && !isNaN(year)) return new Date(year, month, 1);
+  }
+  if (parts.length === 3) {
+    // DD/MM/YYYY format
+    const day   = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year  = parseInt(parts[2], 10);
+    if (!isNaN(day) && !isNaN(month) && !isNaN(year)) return new Date(year, month, day);
+  }
+  // Fallback: thử parse trực tiếp
+  const d = new Date(label);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Kiểm tra xem toàn bộ labels có parse được thành Date không
+function allLabelsAreTime() {
+  return dataPoints.every(p => parseLabelToDate(p.label) !== null);
+}
+
 // Initialize Chart.js Instance
 function initChart() {
   if (chart) {
@@ -423,6 +501,9 @@ function initChart() {
     }
   };
 
+  // Dùng time scale nếu toàn bộ labels parse được thành Date
+  const useTimeScale = allLabelsAreTime();
+
   // Re-build datasets list dynamically
   const datasets = chartLines.map((line) => {
     const baseColor = getThemeColor(line.color);
@@ -431,7 +512,8 @@ function initChart() {
       label: line.name,
       data: dataPoints.map(p => {
         const val = p[line.id];
-        return (val === undefined || val === '') ? null : val;
+        const y = (val === undefined || val === '') ? null : val;
+        return useTimeScale ? { x: parseLabelToDate(p.label), y } : y;
       }),
       borderColor: baseColor,
       borderDash: DASH_STYLES[line.style] || [],
@@ -441,7 +523,7 @@ function initChart() {
         return createGradient(context.chart.ctx, chartArea, startAlpha, 'rgba(0, 0, 0, 0.0)');
       },
       borderWidth: 3.5,
-      tension: 0.2,
+      tension: 0, // Đường thẳng tuyệt đối, không có độ cong, không bao giờ võng qua số 0
       fill: true,
       spanGaps: true, // Connect gaps smoothly
       
@@ -470,19 +552,21 @@ function initChart() {
         }
         return baseColor;
       },
-      pointBorderColor: isLight ? '#ffffff' : '#080b11',
+      pointBorderColor: '#000000',
       pointBorderWidth: 2,
       
       // HIDE point marker completely if value is 0 or null
       pointRadius: (ctxPoint) => {
         if (ctxPoint.type !== 'data') return 5;
-        const val = ctxPoint.dataset.data[ctxPoint.dataIndex];
+        const raw = ctxPoint.dataset.data[ctxPoint.dataIndex];
+        const val = (raw && typeof raw === 'object') ? raw.y : raw;
         if (val === 0 || val === null || val === undefined) return 0;
         return 5;
       },
       pointHoverRadius: (ctxPoint) => {
         if (ctxPoint.type !== 'data') return 7;
-        const val = ctxPoint.dataset.data[ctxPoint.dataIndex];
+        const raw = ctxPoint.dataset.data[ctxPoint.dataIndex];
+        const val = (raw && typeof raw === 'object') ? raw.y : raw;
         if (val === 0 || val === null || val === undefined) return 0;
         return 7;
       },
@@ -508,7 +592,8 @@ function initChart() {
   chart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: dataPoints.map(p => p.label),
+      // labels chỉ dùng khi KHÔNG dùng time scale
+      labels: useTimeScale ? undefined : dataPoints.map(p => p.label),
       datasets: datasets
     },
     options: {
@@ -529,18 +614,22 @@ function initChart() {
           boxHeight: 8,
           usePointStyle: true,
           callbacks: {
+            title: function(items) {
+              // Hiển thị label gốc (MM/YYYY) thay vì timestamp tự động
+              if (!items.length) return '';
+              const idx = items[0].dataIndex;
+              return dataPoints[idx] ? dataPoints[idx].label : items[0].label;
+            },
             label: function(context) {
               let label = context.dataset.label || '';
-              if (label) {
-                label += ': ';
-              }
+              if (label) { label += ': '; }
               if (context.parsed.y !== null) {
                 label += context.parsed.y.toLocaleString() + ySuffixInput.value;
               }
               const idx = context.dataIndex;
               const startIndex = dataPoints.findIndex(p => p.label === segmentStartSelect.value);
               const endIndex = dataPoints.findIndex(p => p.label === segmentEndSelect.value);
-              if (context.dataset.label === 'Cấp cao' && segmentEnabled.checked && 
+              if (context.dataset.label === 'Cấp cao' && segmentEnabled.checked &&
                   startIndex !== -1 && endIndex !== -1 && idx >= startIndex && idx <= endIndex) {
                 label += ' (Phân đoạn đặc biệt)';
               }
@@ -550,19 +639,34 @@ function initChart() {
         }
       },
       scales: {
-        x: {
-          grid: {
-            color: gridColor,
-            borderColor: borderColor
+        x: useTimeScale ? {
+          type: 'time',
+          time: {
+            // Hiển thị nhãn theo tháng/năm
+            displayFormats: {
+              month: 'MM/yyyy',
+              quarter: 'MM/yyyy',
+              year: 'yyyy'
+            },
+            tooltipFormat: 'MM/yyyy'
           },
+          // Chart.js sẽ tự chọn đơn vị phù hợp (month / quarter / year)
+          grid: { color: gridColor, borderColor: borderColor },
           ticks: {
             color: textColor,
-            font: {
-              size: 11
-            }
+            font: { size: 11 },
+            maxRotation: 45,
+            autoSkip: true,
+            maxTicksLimit: 12,
+            includeBounds: true  // Cố gắng hiển thị điểm đầu và điểm cuối
           }
+          // Nhãn điểm cuối được đảm bảo bởi lastXTickPlugin
+        } : {
+          grid: { color: gridColor, borderColor: borderColor },
+          ticks: { color: textColor, font: { size: 11 } }
         },
         y: {
+          beginAtZero: true,
           grid: {
             color: gridColor,
             borderColor: borderColor
@@ -579,7 +683,7 @@ function initChart() {
         }
       }
     },
-    plugins: [lineShadowPlugin]
+    plugins: [lineShadowPlugin, lastXTickPlugin]
   });
 }
 
@@ -594,8 +698,9 @@ function updateChart() {
   localStorage.setItem('chart_lines', JSON.stringify(chartLines));
   saveAxisSettings();
   
-  // Update labels
-  chart.data.labels = dataPoints.map(p => p.label);
+  // Update labels/data — dùng {x,y} nếu time scale
+  const useTimeScale = allLabelsAreTime();
+  chart.data.labels = useTimeScale ? undefined : dataPoints.map(p => p.label);
   
   // Update data values and custom styling for each active line
   chartLines.forEach((line, index) => {
@@ -605,14 +710,15 @@ function updateChart() {
     // Update data array
     dataset.data = dataPoints.map(p => {
       const val = p[line.id];
-      return (val === undefined || val === '') ? null : val;
+      const y = (val === undefined || val === '') ? null : val;
+      return useTimeScale ? { x: parseLabelToDate(p.label), y } : y;
     });
     
     // Update active theme colors
     const baseColor = getThemeColor(line.color);
     dataset.borderColor = baseColor;
     dataset.pointBackgroundColor = baseColor;
-    dataset.pointBorderColor = isLight ? '#ffffff' : '#080b11';
+    dataset.pointBorderColor = '#000000';
     dataset.pointHoverBorderColor = baseColor;
     
     // Update custom styles
@@ -636,9 +742,9 @@ function updateChart() {
     chart.options.scales.y.max = parseFloat(yMaxInput.value) || 1000;
     chart.options.scales.y.ticks.stepSize = parseFloat(yStepInput.value) || 100;
   } else {
-    delete chart.options.scales.y.min;
     delete chart.options.scales.y.max;
     delete chart.options.scales.y.ticks.stepSize;
+    chart.options.scales.y.min = 0; // Ép buộc trục Y tuyệt đối bắt đầu từ 0
   }
   
   chart.update();
@@ -772,6 +878,75 @@ function updateThemeUI() {
 
 // Setup all DOM interaction events
 function setupEventListeners() {
+  // Panel Collapse/Minimize logic
+  document.querySelectorAll('.control-sidebar .glass-panel').forEach(panel => {
+    const title = panel.querySelector('.panel-title');
+    if (title) {
+      title.style.cursor = 'pointer';
+      title.title = 'Nhấp để thu gọn/mở rộng';
+      
+      const iconWrap = document.createElement('div');
+      iconWrap.innerHTML = `<svg class="minimize-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.3s; margin-left: auto; color: var(--text-secondary);"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+      title.appendChild(iconWrap.firstChild);
+      
+      title.addEventListener('click', () => {
+        panel.classList.toggle('collapsed');
+        const icon = title.querySelector('.minimize-icon');
+        if (panel.classList.contains('collapsed')) {
+          icon.style.transform = 'rotate(180deg)';
+        } else {
+          icon.style.transform = 'rotate(0deg)';
+        }
+      });
+    }
+  });
+
+  // Sidebar Resizer logic
+  const sidebar = document.querySelector('.control-sidebar');
+  const contentArea = document.querySelector('.content-area');
+  
+  if (sidebar && contentArea) {
+    const resizer = document.createElement('div');
+    resizer.className = 'sidebar-resizer';
+    // Insert resizer right between sidebar and contentArea
+    sidebar.parentNode.insertBefore(resizer, contentArea);
+    
+    let isResizing = false;
+    
+    resizer.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      resizer.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none'; // Prevent text selection
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const sidebarRect = sidebar.getBoundingClientRect();
+      let newWidth = e.clientX - sidebarRect.left;
+      
+      // Enforce bounds
+      if (newWidth < 320) newWidth = 320;
+      const maxWidth = window.innerWidth * 0.5; // Max 50% of screen
+      if (newWidth > maxWidth) newWidth = maxWidth;
+      
+      sidebar.style.width = newWidth + 'px';
+      
+      // Update chart canvas dynamically to prevent distortion
+      if (chart) chart.resize();
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        resizer.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (chart) chart.resize();
+      }
+    });
+  }
+
   // Theme Toggle click event
   btnThemeToggle.addEventListener('click', toggleTheme);
 
@@ -997,28 +1172,316 @@ function setupEventListeners() {
     }
   });
   
-  // Export to PNG Image
-  btnExportPng.addEventListener('click', () => {
-    const canvas = document.getElementById('mainChart');
-    const isLight = document.body.classList.contains('light-theme');
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    tempCtx.fillStyle = isLight ? '#ffffff' : '#0f1422';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    
-    tempCtx.drawImage(canvas, 0, 0);
-    
-    const imageURI = tempCanvas.toDataURL('image/png');
+  const exportTitleInput = document.getElementById('export-title-input');
+  
+  // ─── Shared offscreen render ────────────────────────────────────────────────
+  // Returns a Promise<string> (data URL). Không chạm vào biểu đồ thật.
+  function buildExportDataUrl() {
+    return new Promise((resolve) => {
+      const EXPORT_WIDTH  = 1200;
+      const EXPORT_HEIGHT = 700;
+
+      const offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width  = EXPORT_WIDTH;
+      offscreenCanvas.height = EXPORT_HEIGHT;
+      offscreenCanvas.style.display = 'none';
+      document.body.appendChild(offscreenCanvas);
+
+      const textColor   = '#000000';
+      const gridColor   = 'rgba(0,0,0,0.1)';
+      const borderClr   = 'rgba(0,0,0,0.2)';
+
+      // ── Tính index phân đoạn (dùng cho cả dataset lẫn legend) ──
+      const segIsActive = segmentEnabled.checked;
+      const segStartIdx = dataPoints.findIndex(p => p.label === segmentStartSelect.value);
+      const segEndIdx   = dataPoints.findIndex(p => p.label === segmentEndSelect.value);
+      const segColor    = getThemeColor(segmentColorSelect.value);
+      const segDash     = DASH_STYLES[segmentStyleSelect.value] || [];
+      const segPoint    = segmentPointSelect.value;
+
+      const exportDatasets = chartLines.map((line) => {
+        const baseColor = getThemeColor(line.color);
+        const isHighLine = line.id === 'high';
+
+        const dataset = {
+          label: line.name,
+          data: dataPoints.map(p => {
+            const val = p[line.id];
+            return (val === undefined || val === '') ? null : val;
+          }),
+          borderColor: baseColor,
+          borderDash: DASH_STYLES[line.style] || [],
+          backgroundColor: 'rgba(0,0,0,0)',
+          borderWidth: 3.5,
+          tension: 0,
+          fill: false,
+          spanGaps: true,
+          pointBorderColor: '#000000',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          // Point style & color — với phân đoạn dùng màu/hình riêng
+          pointStyle: (ctx) => {
+            if (isHighLine && segIsActive && segStartIdx !== -1 && segEndIdx !== -1
+                && ctx.dataIndex >= segStartIdx && ctx.dataIndex <= segEndIdx) {
+              return segPoint;
+            }
+            return line.point;
+          },
+          pointBackgroundColor: (ctx) => {
+            if (isHighLine && segIsActive && segStartIdx !== -1 && segEndIdx !== -1
+                && ctx.dataIndex >= segStartIdx && ctx.dataIndex <= segEndIdx) {
+              return segColor;
+            }
+            return baseColor;
+          },
+        };
+
+        // Thêm segment coloring cho đường "Cấp cao"
+        if (isHighLine && segIsActive && segStartIdx !== -1 && segEndIdx !== -1) {
+          dataset.segment = {
+            borderColor: (ctx) => {
+              const idx = ctx.p0DataIndex;
+              return (idx >= segStartIdx && idx < segEndIdx) ? segColor : undefined;
+            },
+            borderDash: (ctx) => {
+              const idx = ctx.p0DataIndex;
+              return (idx >= segStartIdx && idx < segEndIdx) ? segDash : undefined;
+            }
+          };
+        }
+
+        return dataset;
+      });
+
+      const exportTitle = exportTitleInput ? exportTitleInput.value.trim() || 'Biểu đồ' : 'Biểu đồ';
+
+      // Plugin tùy chỉnh legend — thêm chú thích phân đoạn nếu đang bật
+      const customLegendLabels = {
+        color: textColor,
+        usePointStyle: true,
+        padding: 24,
+        font: { size: 13, family: "'Inter', sans-serif" },
+        generateLabels: (c) => {
+          // Labels mặc định từ datasets
+          const base = Chart.defaults.plugins.legend.labels.generateLabels(c);
+          // Thêm entry chú thích phân đoạn nếu có
+          const highExists = chartLines.some(l => l.id === 'high');
+          if (segIsActive && highExists && segStartIdx !== -1 && segEndIdx !== -1) {
+            base.push({
+              text: `Cấp cao (Phân đoạn: ${segmentStartSelect.value} – ${segmentEndSelect.value})`,
+              fillStyle: segColor,
+              strokeStyle: segColor,
+              pointStyle: segPoint,
+              lineWidth: 2,
+              hidden: false,
+              datasetIndex: -1
+            });
+          }
+          return base;
+        }
+      };
+
+      const useTimeScale = allLabelsAreTime();
+
+      const tempChart = new Chart(offscreenCanvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          // Dùng {x,y} khi time scale, giống chart thật
+          labels: useTimeScale ? undefined : dataPoints.map(p => p.label),
+          datasets: exportDatasets.map((ds, i) => ({
+            ...ds,
+            data: dataPoints.map(p => {
+              const line = chartLines[i];
+              const val = p[line.id];
+              const y = (val === undefined || val === '') ? null : val;
+              return useTimeScale ? { x: parseLabelToDate(p.label), y } : y;
+            })
+          }))
+        },
+        options: {
+          responsive: false,
+          animation: false,
+          plugins: {
+            title: {
+              display: true,
+              text: exportTitle,
+              font: { size: 20, family: "'Inter', sans-serif", weight: 'bold' },
+              color: textColor,
+              padding: { top: 16, bottom: 24 }
+            },
+            legend: {
+              display: true,
+              position: 'bottom',
+              labels: customLegendLabels
+            },
+            tooltip: { enabled: false }
+          },
+          scales: {
+            // ── Trục X: đồng bộ với chart thật ──────────────────────────────
+            x: useTimeScale ? {
+              type: 'time',
+              time: {
+                displayFormats: { month: 'MM/yyyy', quarter: 'MM/yyyy', year: 'yyyy' },
+                tooltipFormat: 'MM/yyyy'
+              },
+              grid: { color: gridColor, borderColor: borderClr },
+              ticks: {
+                color: textColor,
+                font: { size: 12 },
+                maxRotation: 45,
+                autoSkip: true,
+                maxTicksLimit: 12,
+                includeBounds: true
+              }
+              // Nhãn điểm cuối được đảm bảo bởi lastXTickPlugin bên dưới
+            } : {
+              grid: { color: gridColor, borderColor: borderClr },
+              ticks: { color: textColor, font: { size: 12 } }
+            },
+            // ── Trục Y: đồng bộ với chart thật (manual hoặc auto) ──────────
+            y: (() => {
+              const base = {
+                grid: { color: gridColor, borderColor: borderClr },
+                ticks: {
+                  color: textColor,
+                  font: { size: 12 },
+                  callback: (value) => value.toLocaleString() + (ySuffixInput ? ySuffixInput.value : '')
+                }
+              };
+              if (!yAutoScale.checked) {
+                base.min = parseFloat(yMinInput.value) || 0;
+                base.max = parseFloat(yMaxInput.value) || 1000;
+                base.ticks.stepSize = parseFloat(yStepInput.value) || 100;
+              } else {
+                base.min = 0;
+              }
+              return base;
+            })()
+          }
+        },
+        // Plugin vẽ nhãn cuối trục X cho offscreen chart
+        plugins: [{
+          id: 'exportLastXTick',
+          afterDraw: (c) => {
+            const xScale = c.scales.x;
+            if (!xScale || xScale.type !== 'time') return;
+            const lastPoint = dataPoints[dataPoints.length - 1];
+            if (!lastPoint) return;
+            const lastDate = parseLabelToDate(lastPoint.label);
+            if (!lastDate) return;
+            const xPixel = xScale.getPixelForValue(lastDate.valueOf());
+            const yPixel = xScale.bottom;
+            const THRESHOLD = 20;
+            const already = xScale.ticks.some(t => Math.abs(xScale.getPixelForValue(t.value) - xPixel) < THRESHOLD);
+            if (already) return;
+            const { ctx: ct } = c;
+            ct.save();
+            ct.font = '12px Inter, sans-serif';
+            ct.fillStyle = '#000000';
+            ct.textAlign = 'center';
+            ct.textBaseline = 'top';
+            ct.fillText(lastPoint.label, xPixel, yPixel + 4);
+            ct.strokeStyle = 'rgba(0,0,0,0.3)';
+            ct.lineWidth = 1;
+            ct.beginPath();
+            ct.moveTo(xPixel, xScale.top);
+            ct.lineTo(xPixel, yPixel);
+            ct.stroke();
+            ct.restore();
+          }
+        }]
+      });
+
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const finalCanvas = document.createElement('canvas');
+          finalCanvas.width  = EXPORT_WIDTH;
+          finalCanvas.height = EXPORT_HEIGHT;
+          const finalCtx = finalCanvas.getContext('2d');
+          finalCtx.fillStyle = '#ffffff';
+          finalCtx.fillRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT);
+          finalCtx.drawImage(offscreenCanvas, 0, 0);
+
+          const dataUrl = finalCanvas.toDataURL('image/png', 1.0);
+          tempChart.destroy();
+          document.body.removeChild(offscreenCanvas);
+          resolve(dataUrl);
+        }, 120);
+      });
+    });
+  }
+
+  // ─── Preview modal wiring ────────────────────────────────────────────────────
+  const exportModal      = document.getElementById('export-modal');
+  const previewImg       = document.getElementById('export-preview-img');
+  const previewLoading   = document.getElementById('preview-loading');
+  const btnCloseModal    = document.getElementById('btn-close-modal');
+  const btnCancelExport  = document.getElementById('btn-cancel-export');
+  const btnConfirmExport = document.getElementById('btn-confirm-export');
+  let   cachedDataUrl    = null;
+
+  function triggerDownload(dataUrl) {
     const link = document.createElement('a');
-    link.download = `bieu_do_da_chi_so_${isLight ? 'light' : 'dark'}.png`;
-    link.href = imageURI;
+    link.download = 'bieu_do_da_chi_so.png';
+    link.href = dataUrl;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  }
+
+  function openPreviewModal() {
+    // Reset state
+    previewImg.style.display = 'none';
+    previewLoading.style.display = 'inline';
+    cachedDataUrl = null;
+    btnConfirmExport.disabled = true;
+    exportModal.style.display = 'flex';
+
+    buildExportDataUrl().then((dataUrl) => {
+      cachedDataUrl = dataUrl;
+      previewImg.src = dataUrl;
+      previewImg.style.display = 'block';
+      previewLoading.style.display = 'none';
+      btnConfirmExport.disabled = false;
+    });
+  }
+
+  function closePreviewModal() {
+    exportModal.style.display = 'none';
+  }
+
+  // Khi đổi tên biểu đồ — cập nhật lại preview
+  if (exportTitleInput) {
+    exportTitleInput.addEventListener('input', () => {
+      if (exportModal.style.display !== 'none') {
+        previewImg.style.display = 'none';
+        previewLoading.style.display = 'inline';
+        cachedDataUrl = null;
+        btnConfirmExport.disabled = true;
+        clearTimeout(window._previewTimer);
+        window._previewTimer = setTimeout(() => {
+          buildExportDataUrl().then((dataUrl) => {
+            cachedDataUrl = dataUrl;
+            previewImg.src = dataUrl;
+            previewImg.style.display = 'block';
+            previewLoading.style.display = 'none';
+            btnConfirmExport.disabled = false;
+          });
+        }, 600);
+      }
+    });
+  }
+
+  btnExportPng.addEventListener('click', openPreviewModal);
+  btnCloseModal.addEventListener('click', closePreviewModal);
+  btnCancelExport.addEventListener('click', closePreviewModal);
+  exportModal.addEventListener('click', (e) => { if (e.target === exportModal) closePreviewModal(); });
+
+  btnConfirmExport.addEventListener('click', () => {
+    if (cachedDataUrl) {
+      triggerDownload(cachedDataUrl);
+      closePreviewModal();
+    }
   });
   
   // Copy data as JSON
