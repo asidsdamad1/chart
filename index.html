@@ -8,7 +8,8 @@
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Date adapter cho time scale (tỉ lệ thời gian thực trên trục X) -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <!-- Plugin hiển thị nhãn số liệu trên từng điểm -->
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
 </head>
@@ -140,13 +141,32 @@
             <label for="segment-enabled" style="margin: 0; cursor: pointer;">Kích hoạt nét đứt đoạn đặc biệt</label>
           </div>
 
-          <div class="form-group">
-            <label for="segment-start">Điểm Bắt đầu</label>
-            <select id="segment-start"></select>
+          <div class="form-group full-width">
+            <label>Điểm Bắt đầu (Thời gian & Số liệu)</label>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <input type="text" id="segment-start" class="table-input" list="segment-start-list"
+                placeholder="VD: 09/2024" autocomplete="off"
+                style="flex: 1; min-width: 0; padding: 4px 6px; font-size: 0.82rem; font-family: var(--font-body); border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+              <datalist id="segment-start-list"></datalist>
+              <span style="color: var(--text-secondary);">-</span>
+              <input type="number" id="segment-val-start" class="table-input" placeholder="Số liệu..."
+                style="flex: 1; min-width: 0; padding: 4px 6px; font-size: 0.82rem; font-family: var(--font-body); border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+            </div>
           </div>
-          <div class="form-group">
-            <label for="segment-end">Điểm Kết thúc</label>
-            <select id="segment-end"></select>
+          <div class="form-group full-width">
+            <label>Điểm Kết thúc (Thời gian & Số liệu)</label>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <input type="text" id="segment-end" class="table-input" list="segment-end-list" placeholder="VD: 09/2025"
+                autocomplete="off"
+                style="flex: 1; min-width: 0; padding: 4px 6px; font-size: 0.82rem; font-family: var(--font-body); border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+              <datalist id="segment-end-list"></datalist>
+              <span style="color: var(--text-secondary);">-</span>
+              <input type="number" id="segment-val-end" class="table-input" placeholder="Số liệu..."
+                style="flex: 1; min-width: 0; padding: 4px 6px; font-size: 0.82rem; font-family: var(--font-body); border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+            </div>
+            <p style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.4;">
+              💡 Trục X sẽ tự động cập nhật phân đoạn với số liệu mới. Để trống để dùng số liệu gốc.
+            </p>
           </div>
 
           <div class="form-group">
@@ -167,7 +187,7 @@
               <option value="black" selected>Đen/Xám đậm (Black/Dark)</option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group full-width">
             <label for="segment-point">Điểm mốc phân đoạn</label>
             <select id="segment-point">
               <option value="circle">Hình tròn (●)</option>
@@ -177,56 +197,6 @@
               <option value="cross">Chữ thập (+)</option>
             </select>
           </div>
-        </div>
-
-        <!-- Divider -->
-        <div style="border-top: 1px solid var(--border-color); margin: 10px 0 12px;"></div>
-
-        <!-- Extract segment as independent line -->
-        <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius:6px; padding: 10px 12px; margin-bottom: 4px;">
-          <p style="font-size: 0.75rem; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.5;">
-            <strong style="color: var(--accent-primary);">Tách độc lập:</strong>
-            Nhập số liệu thực tế cho điểm <em>đầu</em> và <em>cuối</em> phân đoạn, sau đó tách thành đường vẽ riêng.
-          </p>
-
-          <!-- Actual value inputs -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-            <div>
-              <label for="segment-val-start" style="font-size: 0.7rem; display: block; margin-bottom: 3px; color: var(--text-secondary);">
-                📍 Số liệu — Bắt đầu
-              </label>
-              <input
-                type="number"
-                id="segment-val-start"
-                class="table-input"
-                placeholder="Ví dụ: 610"
-                style="width:100%; padding:5px 8px; font-size:0.82rem; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-primary); color:var(--text-primary); box-sizing:border-box;"
-              >
-            </div>
-            <div>
-              <label for="segment-val-end" style="font-size: 0.7rem; display: block; margin-bottom: 3px; color: var(--text-secondary);">
-                🏁 Số liệu — Kết thúc
-              </label>
-              <input
-                type="number"
-                id="segment-val-end"
-                class="table-input"
-                placeholder="Ví dụ: 950"
-                style="width:100%; padding:5px 8px; font-size:0.82rem; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-primary); color:var(--text-primary); box-sizing:border-box;"
-              >
-            </div>
-          </div>
-          <p style="font-size: 0.68rem; color: var(--text-secondary); margin: 0 0 8px; opacity: 0.75;">
-            💡 Để trống để giữ nguyên số liệu gốc của đường Cấp cao.
-          </p>
-
-          <button id="btn-extract-segment" class="btn" style="width:100%; justify-content:center; font-size:0.8rem; padding:8px 12px; background: linear-gradient(135deg,#6366f1,#8b5cf6); border-color: transparent;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px; flex-shrink:0;">
-              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-            Tách thành Đường riêng &amp; Nhập số liệu
-          </button>
         </div>
       </section>
 
@@ -298,8 +268,11 @@
       <!-- Export Utility Bar -->
       <div class="utilities-row">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <label for="export-title-input" style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">Tên in trên ảnh:</label>
-          <input type="text" id="export-title-input" class="table-input" value="Xuất hướng số liệu giai đoạn 2021 - 2025" style="width: 250px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+          <label for="export-title-input"
+            style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">Tên in trên ảnh:</label>
+          <input type="text" id="export-title-input" class="table-input"
+            value="Xuất hướng số liệu giai đoạn 2021 - 2025"
+            style="width: 250px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
         </div>
         <div class="action-group">
           <button id="btn-print" class="btn">
@@ -336,19 +309,24 @@
     <div class="modal-content glass-panel" style="width: min(90vw, 900px); max-height: 90vh; overflow-y: auto;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
         <h2 class="panel-title" style="margin:0;">Xem trước ảnh xuất</h2>
-        <button id="btn-close-modal" style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:1.4rem;line-height:1;" title="Đóng">&#10005;</button>
+        <button id="btn-close-modal"
+          style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:1.4rem;line-height:1;"
+          title="Đóng">&#10005;</button>
       </div>
 
       <!-- Preview image -->
-      <div style="background:#f8f8f8; border:1px solid #ddd; border-radius:8px; overflow:hidden; display:flex; justify-content:center; align-items:center; padding:12px; margin-bottom:20px; min-height:200px;">
-        <img id="export-preview-img" style="max-width:100%; display:block; border-radius:4px;" alt="Xem trước biểu đồ" />
+      <div
+        style="background:#f8f8f8; border:1px solid #ddd; border-radius:8px; overflow:hidden; display:flex; justify-content:center; align-items:center; padding:12px; margin-bottom:20px; min-height:200px;">
+        <img id="export-preview-img" style="max-width:100%; display:block; border-radius:4px;"
+          alt="Xem trước biểu đồ" />
         <span id="preview-loading" style="color:#888; font-size:0.9rem;">Đang tạo bản xem trước...</span>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:12px;">
         <button id="btn-cancel-export" class="btn btn-secondary">Hủy</button>
         <button id="btn-confirm-export" class="btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:middle;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            style="margin-right:6px;vertical-align:middle;">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>

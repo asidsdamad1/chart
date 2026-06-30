@@ -99,6 +99,8 @@ const segmentEndSelect = document.getElementById('segment-end');
 const segmentStyleSelect = document.getElementById('segment-style');
 const segmentColorSelect = document.getElementById('segment-color');
 const segmentPointSelect = document.getElementById('segment-point');
+const segmentValStartInput = document.getElementById('segment-val-start');
+const segmentValEndInput = document.getElementById('segment-val-end');
 
 const dataTableHead = document.getElementById('data-table-head');
 const dataTableBody = document.getElementById('data-table-body');
@@ -163,12 +165,21 @@ document.addEventListener('DOMContentLoaded', () => {
   updateChart();
 });
 
-// Helper to select default option if it exists
-function setSelectValueIfContains(selectElem, val) {
-  for (let i = 0; i < selectElem.options.length; i++) {
-    if (selectElem.options[i].value === val) {
-      selectElem.selectedIndex = i;
-      break;
+// Helper to select default option if it exists (hỗ trợ cả <select> và <input> với datalist)
+function setSelectValueIfContains(elem, val) {
+  if (!elem) return;
+  // Nếu là <input type="text"> — chỉ cần gán value trực tiếp
+  if (elem.tagName === 'INPUT') {
+    elem.value = val;
+    return;
+  }
+  // Nếu là <select> — tìm option khớp
+  if (elem.options) {
+    for (let i = 0; i < elem.options.length; i++) {
+      if (elem.options[i].value === val) {
+        elem.selectedIndex = i;
+        break;
+      }
     }
   }
 }
@@ -245,7 +256,8 @@ let _timeSortDir = null;
 
 // Render dynamic inputs in table based on customized datasets
 function renderTable() {
-  // Chỉ hiển thị các đường KHÔNG phải phân đoạn tách độc lập (seg_) trong bảng
+  // Chỉ hiển thị các đường KHÔNG phải phân đoạn (seg_) trong bảng
+  // (Giá trị phân đoạn được sửa trực tiếp qua ô input ở panel bên trái)
   const tableLines = chartLines.filter(l => !l.id.startsWith('seg_'));
 
   // 1. Render Table Head
@@ -332,34 +344,46 @@ function renderTable() {
 
 // Update segment selection dropdowns
 function updateDropdowns() {
+  // Lưu lại giá trị hiện tại
   const startVal = segmentStartSelect.value;
   const endVal = segmentEndSelect.value;
 
-  segmentStartSelect.innerHTML = '';
-  segmentEndSelect.innerHTML = '';
+  // Cập nhật datalist gợi ý cho cả hai input
+  const startList = document.getElementById('segment-start-list');
+  const endList = document.getElementById('segment-end-list');
 
-  dataPoints.forEach((pt) => {
-    const optStart = document.createElement('option');
-    optStart.value = pt.label;
-    optStart.textContent = pt.label;
-    segmentStartSelect.appendChild(optStart);
-
-    const optEnd = document.createElement('option');
-    optEnd.value = pt.label;
-    optEnd.textContent = pt.label;
-    segmentEndSelect.appendChild(optEnd);
-  });
-
-  // Try to preserve previous selections
-  if (startVal) segmentStartSelect.value = startVal;
-  if (endVal) segmentEndSelect.value = endVal;
-
-  // Default fallbacks if empty or invalid
-  if (!segmentStartSelect.value && dataPoints.length > 3) {
-    segmentStartSelect.value = dataPoints[dataPoints.length - 7].label; // approx 2024
+  if (startList) {
+    startList.innerHTML = '';
+    dataPoints.forEach((pt) => {
+      const opt = document.createElement('option');
+      opt.value = pt.label;
+      startList.appendChild(opt);
+    });
   }
-  if (!segmentEndSelect.value && dataPoints.length > 0) {
-    segmentEndSelect.value = dataPoints[dataPoints.length - 1].label; // last point
+  if (endList) {
+    endList.innerHTML = '';
+    dataPoints.forEach((pt) => {
+      const opt = document.createElement('option');
+      opt.value = pt.label;
+      endList.appendChild(opt);
+    });
+  }
+
+  // Giữ lại giá trị đã nhập nếu vần hợp lệ
+  const labels = dataPoints.map(p => p.label);
+  if (startVal && labels.includes(startVal)) {
+    segmentStartSelect.value = startVal;
+  } else if (!startVal) {
+    // Gán mặc định khi lần đầu chưa có giá trị
+    const defaultStart = dataPoints.length > 3 ? dataPoints[dataPoints.length - 7]?.label || dataPoints[0].label : dataPoints[0]?.label;
+    if (defaultStart) segmentStartSelect.value = defaultStart;
+  }
+
+  if (endVal && labels.includes(endVal)) {
+    segmentEndSelect.value = endVal;
+  } else if (!endVal) {
+    const defaultEnd = dataPoints[dataPoints.length - 1]?.label;
+    if (defaultEnd) segmentEndSelect.value = defaultEnd;
   }
 }
 
@@ -416,52 +440,77 @@ const lineShadowPlugin = {
   }
 };
 
-// Plugin vẽ nhãn điểm cuối trục X luôn hiển thị, kể cả khi bị autoSkip bỏ qua
-const lastXTickPlugin = {
-  id: 'lastXTick',
+// Plugin vẽ các mốc tháng trên trục X và đảm bảo nhãn điểm cuối
+const customXAxisLabelsPlugin = {
+  id: 'customXAxisLabels',
   afterDraw: (chartInstance) => {
     const xScale = chartInstance.scales.x;
     if (!xScale || xScale.type !== 'time') return;
 
-    const lastPoint = dataPoints[dataPoints.length - 1];
-    if (!lastPoint) return;
-    const lastDate = parseLabelToDate(lastPoint.label);
-    if (!lastDate) return;
-
-    // Tính toán vị trí pixel X của điểm dữ liệu cuối cùng
-    const xPixel = xScale.getPixelForValue(lastDate.valueOf());
-    const yPixel = xScale.bottom; // Đáy của trục X
-
-    // Kiểm tra xem tick cuối đã có label hiển thị tại vị trí này chưa
-    const THRESHOLD = 20; // px — nếu đã có tick trong vòng 20px thì không vẽ thêm
-    const alreadyVisible = xScale.ticks.some(tick => {
-      const tickPx = xScale.getPixelForValue(tick.value);
-      return Math.abs(tickPx - xPixel) < THRESHOLD;
-    });
-    if (alreadyVisible) return;
-
-    // Vẽ nhãn cuối bằng canvas 2D API
     const { ctx } = chartInstance;
     ctx.save();
 
     const isLight = document.body.classList.contains('light-theme');
+    const monthColor = isLight ? '#2563eb' : '#60a5fa'; // Màu nổi để phân biệt tháng
     const labelColor = isLight ? '#475569' : '#94a3b8';
 
-    ctx.font = '11px Inter, sans-serif';
-    ctx.fillStyle = labelColor;
+    ctx.font = 'bold 11px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
-    // Padding nhỏ từ đáy axis
-    ctx.fillText(lastPoint.label, xPixel, yPixel + 4);
+    const yAxisLine = xScale.top;
 
-    // Vẽ tick mark nhỏ
-    ctx.strokeStyle = labelColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(xPixel, xScale.top);
-    ctx.lineTo(xPixel, yPixel);
-    ctx.stroke();
+    // 1. Vẽ các nhãn THÁNG tại vị trí của từng dataPoint
+    dataPoints.forEach(pt => {
+      const d = parseLabelToDate(pt.label);
+      if (!d) return;
+
+      const xPixel = xScale.getPixelForValue(d.valueOf());
+
+      let parts = pt.label.split('/');
+      let monthStr = parts.length === 2 ? parseInt(parts[0], 10).toString() : '';
+      if (!monthStr) return;
+
+      // Vẽ vạch (tick) nhỏ cho tháng
+      ctx.strokeStyle = monthColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xPixel, yAxisLine);
+      ctx.lineTo(xPixel, yAxisLine + 4);
+      ctx.stroke();
+
+      // Vẽ số tháng ngay dưới tick
+      ctx.fillStyle = monthColor;
+      ctx.fillText(monthStr, xPixel, yAxisLine + 6);
+    });
+
+    // 2. Vẽ nhãn NĂM cho điểm cuối (nếu bị autoSkip)
+    const lastPoint = dataPoints[dataPoints.length - 1];
+    if (lastPoint) {
+      const lastDate = parseLabelToDate(lastPoint.label);
+      if (lastDate) {
+        const xPixel = xScale.getPixelForValue(lastDate.valueOf());
+
+        // Kiểm tra xem tick cuối đã có label hiển thị tại vị trí này chưa
+        const THRESHOLD = 20;
+        const alreadyVisible = xScale.ticks.some(tick => {
+          const tickPx = xScale.getPixelForValue(tick.value);
+          return Math.abs(tickPx - xPixel) < THRESHOLD;
+        });
+
+        if (!alreadyVisible) {
+          ctx.font = '11px Inter, sans-serif';
+          ctx.fillStyle = labelColor;
+          ctx.fillText(lastPoint.label, xPixel, yAxisLine + 22); // Đặt ngang hàng với nhãn năm
+
+          ctx.strokeStyle = labelColor;
+          ctx.beginPath();
+          ctx.moveTo(xPixel, yAxisLine);
+          ctx.lineTo(xPixel, yAxisLine + 4);
+          ctx.stroke();
+        }
+      }
+    }
 
     ctx.restore();
   }
@@ -712,10 +761,9 @@ function initChart() {
         x: useTimeScale ? {
           type: 'time',
           time: {
-            // Hiển thị nhãn theo tháng/năm
+            // Ép buộc trục X chỉ hiển thị theo mốc năm
+            unit: 'year',
             displayFormats: {
-              month: 'MM/yyyy',
-              quarter: 'MM/yyyy',
               year: 'yyyy'
             },
             tooltipFormat: 'MM/yyyy'
@@ -725,6 +773,7 @@ function initChart() {
           ticks: {
             color: textColor,
             font: { size: 11 },
+            padding: 22, // Đẩy nhãn năm xuống để lấy chỗ cho nhãn tháng
             maxRotation: 45,
             autoSkip: true,
             maxTicksLimit: 12,
@@ -754,14 +803,117 @@ function initChart() {
       }
     },
     plugins: typeof ChartDataLabels !== 'undefined'
-      ? [lineShadowPlugin, lastXTickPlugin, ChartDataLabels]
-      : [lineShadowPlugin, lastXTickPlugin]
+      ? [lineShadowPlugin, customXAxisLabelsPlugin, ChartDataLabels]
+      : [lineShadowPlugin, customXAxisLabelsPlugin]
   });
+}
+
+// Đồng bộ phân đoạn (Tự động tạo/cập nhật đường phân đoạn dựa trên input)
+// Trả về true nếu số lượng đường (chartLines) thay đổi, để updateChart biết cần vẽ lại toàn bộ
+function syncSegmentLine() {
+  let structureChanged = false;
+
+  // Tìm tất cả các index của các đường phân đoạn (seg_)
+  let segIndices = [];
+  chartLines.forEach((l, i) => {
+    if (l.id.startsWith('seg_')) segIndices.push(i);
+  });
+
+  if (!segmentEnabled.checked) {
+    // Nếu bị tắt, xoá SẠCH tất cả các đường phân đoạn (kể cả bị duplicate)
+    if (segIndices.length > 0) {
+      for (let i = segIndices.length - 1; i >= 0; i--) {
+        const idx = segIndices[i];
+        const segId = chartLines[idx].id;
+        chartLines.splice(idx, 1);
+        dataPoints.forEach(pt => { delete pt[segId]; });
+      }
+      structureChanged = true;
+    }
+    return structureChanged;
+  }
+
+  const startLabel = segmentStartSelect.value;
+  const endLabel = segmentEndSelect.value;
+  const startIdx = dataPoints.findIndex(p => p.label === startLabel);
+  const endIdx = dataPoints.findIndex(p => p.label === endLabel);
+
+  if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) return structureChanged;
+
+  const sourceLineId = chartLines.some(l => l.id === 'high') ? 'high' : null;
+  const userValStart = segmentValStartInput && segmentValStartInput.value !== '' ? parseFloat(segmentValStartInput.value) : null;
+  const userValEnd = segmentValEndInput && segmentValEndInput.value !== '' ? parseFloat(segmentValEndInput.value) : null;
+
+  // Xoá các đường phân đoạn bị duplicate, chỉ giữ lại đường ĐẦU TIÊN (nếu có)
+  const firstSegIdx = segIndices.length > 0 ? segIndices[0] : -1;
+  const existingSegLine = firstSegIdx !== -1 ? chartLines[firstSegIdx] : null;
+
+  if (segIndices.length > 1) {
+    for (let i = segIndices.length - 1; i > 0; i--) {
+      const idx = segIndices[i];
+      const dupSegId = chartLines[idx].id;
+      chartLines.splice(idx, 1);
+      dataPoints.forEach(pt => { delete pt[dupSegId]; });
+    }
+    structureChanged = true;
+  }
+
+  let segId;
+  let isNewLine = false;
+
+  if (existingSegLine) {
+    segId = existingSegLine.id;
+    existingSegLine.name = `Phân đoạn (${startLabel}–${endLabel})`;
+    existingSegLine.color = segmentColorSelect.value;
+    existingSegLine.style = segmentStyleSelect.value;
+    existingSegLine.point = segmentPointSelect.value;
+  } else {
+    segId = 'seg_' + Date.now();
+    isNewLine = true;
+    structureChanged = true;
+    chartLines.push({
+      id: segId,
+      name: `Phân đoạn (${startLabel}–${endLabel})`,
+      color: segmentColorSelect.value,
+      style: segmentStyleSelect.value,
+      point: segmentPointSelect.value
+    });
+  }
+
+  dataPoints.forEach(pt => { pt[segId] = null; });
+  dataPoints.forEach((pt, i) => {
+    if (i === startIdx) {
+      pt[segId] = userValStart !== null ? userValStart : (sourceLineId && pt[sourceLineId] != null ? pt[sourceLineId] : 0);
+    } else if (i === endIdx) {
+      pt[segId] = userValEnd !== null ? userValEnd : (sourceLineId && pt[sourceLineId] != null ? pt[sourceLineId] : 0);
+    }
+  });
+
+  if (isNewLine && sourceLineId) {
+    dataPoints.forEach((pt, i) => {
+      if (i > startIdx) pt[sourceLineId] = null;
+    });
+  }
+
+  return structureChanged;
 }
 
 // Update the chart elements dynamically
 function updateChart() {
   if (!chart) return;
+
+  // Tự động đồng bộ đường phân đoạn trước khi tính toán các thông số khác
+  const structureChanged = syncSegmentLine();
+
+  if (structureChanged) {
+    // Nếu có đường vẽ (phân đoạn) mới được thêm/xoá, cần render lại giao diện
+    renderLinesManager();
+    // Khởi tạo lại chart object với tập datasets mới
+    initChart();
+    // Gọi đệ quy 1 lần để tiếp tục chạy luồng cập nhật dữ liệu bình thường, sau đó thoát
+    updateChart();
+    return;
+  }
 
   const isLight = document.body.classList.contains('light-theme');
 
@@ -817,6 +969,32 @@ function updateChart() {
     delete chart.options.scales.y.max;
     delete chart.options.scales.y.ticks.stepSize;
     chart.options.scales.y.min = 0; // Ép buộc trục Y tuyệt đối bắt đầu từ 0
+  }
+
+  // X-axis Scale bounds configuration
+  if (useTimeScale && dataPoints.length > 0) {
+    let minYear = 9999;
+    let maxYear = 0;
+    dataPoints.forEach(p => {
+      const d = parseLabelToDate(p.label);
+      if (d) {
+        const y = d.getFullYear();
+        if (y < minYear) minYear = y;
+        if (y > maxYear) maxYear = y;
+      }
+    });
+
+    // Đảm bảo trục X kết thúc đúng vào ngày 1 tháng 1 của năm tiếp theo
+    // Ví dụ: dữ liệu lớn nhất là 2025 -> kết thúc ở đầu năm 2026
+    let axisMaxYear = Math.max(maxYear + 1, 2026);
+
+    if (minYear <= maxYear) {
+      chart.options.scales.x.min = new Date(minYear, 0, 1).valueOf();
+      chart.options.scales.x.max = new Date(axisMaxYear, 0, 1).valueOf();
+    }
+  } else if (chart.options.scales.x) {
+    delete chart.options.scales.x.min;
+    delete chart.options.scales.x.max;
   }
 
   chart.update();
@@ -1049,109 +1227,28 @@ function setupEventListeners() {
     elem.addEventListener('input', updateChart);
   });
 
-  // Segment configuration changes
-  [segmentEnabled, segmentStartSelect, segmentEndSelect, segmentStyleSelect, segmentColorSelect, segmentPointSelect].forEach(elem => {
+  // Segment configuration changes — dùng 'input' cho text inputs, 'change' cho selects
+  [segmentEnabled, segmentStyleSelect, segmentColorSelect, segmentPointSelect].forEach(elem => {
     elem.addEventListener('change', updateChart);
   });
-
-  // "Tách / Cập nhật đường phân đoạn" — upsert: tạo mới lần đầu, cập nhật các lần sau
-  const btnExtractSegment = document.getElementById('btn-extract-segment');
-  if (btnExtractSegment) {
-    btnExtractSegment.addEventListener('click', () => {
-      if (!segmentEnabled.checked) {
-        alert('Vui lòng bật kích hoạt phân đoạn trước khi tách!');
-        return;
-      }
-
-      const startLabel = segmentStartSelect.value;
-      const endLabel = segmentEndSelect.value;
-      const startIdx = dataPoints.findIndex(p => p.label === startLabel);
-      const endIdx = dataPoints.findIndex(p => p.label === endLabel);
-
-      if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) {
-        alert('Phạm vi phân đoạn không hợp lệ. Vui lòng kiểm tra lại.');
-        return;
-      }
-
-      const sourceLineId = chartLines.some(l => l.id === 'high') ? 'high' : null;
-
-      // Đọc số liệu thực tế từ 2 ô nhập
-      const segValStartInput = document.getElementById('segment-val-start');
-      const segValEndInput = document.getElementById('segment-val-end');
-      const userValStart = segValStartInput && segValStartInput.value !== '' ? parseFloat(segValStartInput.value) : null;
-      const userValEnd = segValEndInput && segValEndInput.value !== '' ? parseFloat(segValEndInput.value) : null;
-
-      // ── UPSERT: tìm đường seg_ đã tồn tại ──────────────────────────────
-      const existingSegLine = chartLines.find(l => l.id.startsWith('seg_'));
-      let segId;
-      let isNewLine = false;
-
-      if (existingSegLine) {
-        // CẬP NHẬT đường đã có: đổi style theo cài đặt hiện tại, giữ nguyên id
-        segId = existingSegLine.id;
-        existingSegLine.name  = `Phân đoạn Cấp cao (${startLabel}–${endLabel})`;
-        existingSegLine.color = segmentColorSelect.value;
-        existingSegLine.style = segmentStyleSelect.value;
-        existingSegLine.point = segmentPointSelect.value;
-      } else {
-        // TẠO MỚI lần đầu
-        segId = 'seg_' + Date.now();
-        isNewLine = true;
-        chartLines.push({
-          id: segId,
-          name: `Phân đoạn Cấp cao (${startLabel}–${endLabel})`,
-          color: segmentColorSelect.value,
-          style: segmentStyleSelect.value,
-          point: segmentPointSelect.value
-        });
-      }
-
-      // Xoá dữ liệu cũ của segId khỏi tất cả điểm (reset sạch trước khi gán lại)
-      dataPoints.forEach(pt => { pt[segId] = null; });
-
-      // Gán dữ liệu: CHỈ 2 điểm đầu và cuối có giá trị
-      dataPoints.forEach((pt, i) => {
-        if (i === startIdx) {
-          pt[segId] = userValStart !== null
-            ? userValStart
-            : (sourceLineId && pt[sourceLineId] != null ? pt[sourceLineId] : 0);
-        } else if (i === endIdx) {
-          pt[segId] = userValEnd !== null
-            ? userValEnd
-            : (sourceLineId && pt[sourceLineId] != null ? pt[sourceLineId] : 0);
+  // Segment start/end và values là text/number input — cập nhật chart khi người dùng nhập xong
+  [segmentStartSelect, segmentEndSelect, segmentValStartInput, segmentValEndInput].forEach(elem => {
+    if (elem) {
+      elem.addEventListener('input', () => {
+        // Nếu là ô thời gian, chỉ update khi hợp lệ. Nếu là ô giá trị, update luôn.
+        if (elem === segmentStartSelect || elem === segmentEndSelect) {
+          if (dataPoints.some(p => p.label === elem.value)) updateChart();
+        } else {
+          updateChart();
         }
-        // else → null (đã reset ở trên)
       });
-
-      // Cắt đường Cấp cao gốc chỉ lần đầu tạo
-      if (isNewLine && sourceLineId) {
-        dataPoints.forEach((pt, i) => {
-          if (i > startIdx) pt[sourceLineId] = null;
-        });
+      if (elem === segmentStartSelect || elem === segmentEndSelect) {
+        elem.addEventListener('change', updateChart);
       }
+    }
+  });
 
-      localStorage.setItem('chart_lines', JSON.stringify(chartLines));
-      renderLinesManager();
-      renderTable();
-      initChart();
-      updateChart();
-
-      // Toast thông báo
-      const toast = document.createElement('div');
-      toast.textContent = isNewLine
-        ? `✅ Đã tách "Phân đoạn Cấp cao (${startLabel}–${endLabel})" thành đường riêng.`
-        : `🔄 Đã cập nhật số liệu phân đoạn (${startLabel}–${endLabel}) trên biểu đồ.`;
-      toast.style.cssText = [
-        'position:fixed', 'bottom:24px', 'left:50%', 'transform:translateX(-50%)',
-        'background:#0f172a', 'color:#e2e8f0', 'border:1px solid #334155',
-        'border-radius:8px', 'padding:12px 20px', 'font-size:0.85rem',
-        'z-index:9999', 'max-width:90vw', 'text-align:center',
-        'box-shadow:0 8px 24px rgba(0,0,0,0.4)'
-      ].join(';');
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 4000);
-    });
-  }
+  // (Đã gỡ bỏ btn-extract-segment vì giờ phân đoạn tự động cập nhật)
 
   // Dynamic line manager events
   if (linesListContainer) {
@@ -1453,6 +1550,29 @@ function setupEventListeners() {
       };
 
       const useTimeScale = allLabelsAreTime();
+      let xMin = undefined;
+      let xMax = undefined;
+
+      if (useTimeScale && dataPoints.length > 0) {
+        let minYear = 9999;
+        let maxYear = 0;
+        dataPoints.forEach(p => {
+          const d = parseLabelToDate(p.label);
+          if (d) {
+            const y = d.getFullYear();
+            if (y < minYear) minYear = y;
+            if (y > maxYear) maxYear = y;
+          }
+        });
+
+        // Đảm bảo trục X kết thúc đúng vào ngày 1 tháng 1 của năm tiếp theo
+        let axisMaxYear = Math.max(maxYear + 1, 2026);
+
+        if (minYear <= maxYear) {
+          xMin = new Date(minYear, 0, 1).valueOf();
+          xMax = new Date(axisMaxYear, 0, 1).valueOf();
+        }
+      }
 
       const tempChart = new Chart(offscreenCanvas.getContext('2d'), {
         type: 'line',
@@ -1513,7 +1633,11 @@ function setupEventListeners() {
             x: useTimeScale ? {
               type: 'time',
               time: {
-                displayFormats: { month: 'MM/yyyy', quarter: 'MM/yyyy', year: 'yyyy' },
+                // Ép buộc trục X chỉ hiển thị theo mốc năm
+                unit: 'year',
+                displayFormats: {
+                  year: 'yyyy'
+                },
                 tooltipFormat: 'MM/yyyy'
               },
               grid: { color: gridColor, borderColor: borderClr },
@@ -1524,7 +1648,9 @@ function setupEventListeners() {
                 autoSkip: true,
                 maxTicksLimit: 12,
                 includeBounds: true
-              }
+              },
+              min: xMin,
+              max: xMax
               // Nhãn điểm cuối được đảm bảo bởi lastXTickPlugin bên dưới
             } : {
               grid: { color: gridColor, borderColor: borderClr },
